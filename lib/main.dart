@@ -1,125 +1,151 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:momenante_uploader/helpers/media_permission_helper.dart';
+import 'package:momenante_uploader/themes/theme.dart';
+import 'package:momenante_uploader/services/upload_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/auth_service.dart';
+import 'helpers/dialog_helper.dart';
 
-void main() {
+void main() async {
+  // ensure that the Flutter framework is fully initialized before running the app.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await dotenv.load(fileName: ".env");
+
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL'] ?? '',
+    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+  );
+
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
+  MyAppState createState() => MyAppState();
+}
+
+class MyAppState extends State<MyApp> {
+  final AuthService _authService = AuthService();
+  final ImagePicker _picker = ImagePicker();
+  bool _hasPermission = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermission();
   }
-}
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
+  // Use the helper function to check permission
+  Future<void> _checkPermission() async {
+    bool permissionGranted = await MediaPermissionHelper.checkMediaPermission();
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      // Update the state based on permission
+      _hasPermission = permissionGranted;
     });
   }
 
+  // Function to pick an image from the gallery or camera
+  Future<void> _pickImage(BuildContext context, ImageSource source) async {
+    final pickedFile = await _picker.pickImage(source: source);
+
+    if (pickedFile != null) {
+      if (context.mounted) {
+        File imageFile = File(pickedFile.path);
+        bool? confirmed = await DialogHelper.showImageConfirmationDialog(context, imageFile);
+
+        if (confirmed == true && context.mounted) {
+          UploadService uploadService = UploadService();
+          bool success = await uploadService.uploadImage(context, imageFile);
+          if (context.mounted) {
+            if (success) {
+              DialogHelper.showCheckMarkDialog(context, "Upload successful!");
+            } else {
+              DialogHelper.showErrorDialog(context);
+            }
+          }
+        }
+      }
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No image selected')),
+        );
+      }
+    }
+  }
+
+  bool _isAuthCheckDone = false;
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+    return MaterialApp(
+      title: 'Momenante Upload App',
+      theme: darkTheme,
+      home: Builder(
+        builder: (context) {
+          // Check authentication status and show dialog if needed
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_isAuthCheckDone) {
+              _authService.checkAuthStatus(context);
+              _isAuthCheckDone = true;
+            }
+          });
+          return Scaffold(
+              appBar: AppBar(
+                title: const Text("Momenante Upload App"),
+              ),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_hasPermission) ...[
+                      const Text(
+                        "Ready to Upload Your Image?", // Custom text
+                        style: TextStyle(fontSize: 18), // Style customization
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          _pickImage(context, ImageSource.gallery);
+                        },
+                        child: const Text("Select an Image"),
+                      ),
+                    ] else... [
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Text(
+                        "We need access to your media storage to upload images. "
+                        "\n\nPlease grant permission so that you can select and upload "
+                        "your images securely.",
+                          style: TextStyle(fontSize: 18),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () async {
+                          bool permissionGranted = await MediaPermissionHelper.askStoragePermission();
+                          if (permissionGranted) {
+                            setState(() {
+                              _hasPermission = true;
+                            });
+                          }
+                        },
+                        child: const Text("Give Permission"),
+                      ),
+                    ]
+                  ],
+                ),
+              ),
+          );
+        },
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
