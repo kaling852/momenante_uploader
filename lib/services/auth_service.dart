@@ -5,13 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
 
-  var count = 0;
   // check authentication status and log the result
   Future<void> checkAuthStatus(BuildContext context) async {
-
     final session = Supabase.instance.client.auth.currentSession;
-    count = count +1;
-    MyLog("Count").log("$count");
     if (session == null) {
       if (context.mounted) {
         _showLoginDialog(context);
