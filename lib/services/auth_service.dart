@@ -15,6 +15,14 @@ class AuthService {
     }
   }
 
+  Future<void> logout() async {
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (e) {
+      MyLog("AuthService:logout").log("Error logout: $e");
+    }
+  }
+
   // showLoginDialog
   void _showLoginDialog(BuildContext context) {
     final TextEditingController emailController = TextEditingController();

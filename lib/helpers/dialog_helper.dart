@@ -41,6 +41,38 @@ class DialogHelper {
     );
   }
 
+  static Future<bool?> showConfirmationDialog(
+      BuildContext context,
+      String title,
+      String body,
+      String positiveButtonLabel,
+      String negativeButtonLabel
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: Text(negativeButtonLabel),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              child: Text(positiveButtonLabel),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   static Future<void> showLoadingDialog(BuildContext context, String message) async {
     showDialog(
       context: Navigator.of(context, rootNavigator: true).context,

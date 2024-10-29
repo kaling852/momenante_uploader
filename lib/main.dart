@@ -99,6 +99,28 @@ class MyAppState extends State<MyApp> {
           return Scaffold(
               appBar: AppBar(
                 title: const Text("Momenante Upload App"),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.logout),
+                    onPressed: () async {
+                      bool? confirmed = await DialogHelper
+                          .showConfirmationDialog(
+                            context,
+                            "Confirm Logout",
+                            "Are you sure you want to log out?",
+                            "Logout",
+                            "Cancel"
+                          );
+
+                      if (confirmed == true) {
+                        await _authService.logout();
+                        if (context.mounted) {
+                          _authService.checkAuthStatus(context);
+                        }
+                      }
+                    },
+                  ),
+                ],
               ),
               body: Center(
                 child: Column(
