@@ -46,7 +46,7 @@ class UploadService {
     } catch (e) {
       MyLog("UploadService:uploadImage").log(e.toString());
       if (context.mounted) {
-        Navigator.of(context).pop(AutofillHints.familyName);
+        Navigator.of(context).pop();
       }
       return false;
     }
