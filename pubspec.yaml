@@ -49,6 +49,10 @@ dependencies:
   # and taking new pictures with the camera.
   image_picker: ^1.1.2
 
+  # Dart Image Library provides server and web apps the ability to load,
+  # manipulate, and save images with various image file formats.
+  image: ^4.3.0
+
   # Permission plugin for Flutter.
   permission_handler: ^11.3.1
 

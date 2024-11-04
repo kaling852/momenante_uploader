@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:momenante_uploader/helpers/dialog_helper.dart';
 import 'package:momenante_uploader/my_log.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image/image.dart' as img;
 
 class UploadService {
 
@@ -32,6 +33,9 @@ class UploadService {
         // show loading dialog during upload
         DialogHelper.showLoadingDialog(context, "Uploading... Please wait.");
 
+        // Resize the image if needed
+        imageFile = await _resizeImageIfNeeded(imageFile);
+
         await Supabase.instance.client.storage.from(bucketName).upload(
             filePath,
             imageFile,
@@ -51,4 +55,37 @@ class UploadService {
       return false;
     }
   }
+
+  Future<File> _resizeImageIfNeeded(File imageFile) async {
+    const maxHeight = 1000;
+    const maxWidth = 1000;
+    final originalImage = img.decodeImage(await imageFile.readAsBytes());
+
+    if (originalImage == null) return imageFile;
+
+    int newWidth = originalImage.width;
+    int newHeight = originalImage.height;
+
+    if (originalImage.height > maxHeight) {
+      newHeight = maxHeight;
+      newWidth = (originalImage.width * maxHeight / originalImage.height).round();
+    }
+
+    if (originalImage.width > maxWidth) {
+      newWidth = maxWidth;
+      newHeight = (originalImage.height * maxWidth / originalImage.width).round();
+    }
+
+    final resizedImage = img.copyResize(
+      originalImage,
+      width: newWidth,
+      height: newHeight,
+    );
+    
+    final resizedImageFile = File(imageFile.path);
+    resizedImageFile.writeAsBytesSync(img.encodeJpg(resizedImage));
+
+    return resizedImageFile;
+  }
+
 }
