@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
@@ -29,26 +31,32 @@ class UploadService {
     String filePath = '$userId/$year/$month/$fileName';
 
     try {
+
       if (context.mounted) {
-        // show loading dialog during upload
-        DialogHelper.showLoadingDialog(context, "Uploading... Please wait.");
-
-        // Resize the image if needed
+        DialogHelper.showLoadingDialog(context, "Resizing image... Please wait.", false);
         imageFile = await _resizeImageIfNeeded(imageFile);
-
-        await Supabase.instance.client.storage.from(bucketName).upload(
-            filePath,
-            imageFile,
-            // allow override the same file
-            fileOptions: const FileOptions(upsert: true)
-        );
         if (context.mounted) {
-          Navigator.of(context).pop(true);
+          Navigator.of(context).pop();
         }
       }
+
+      if (context.mounted) {
+        DialogHelper.showLoadingDialog(context, "Uploading... Please wait.");
+        await Supabase.instance.client.storage.from(bucketName).upload(
+          filePath,
+          imageFile,
+          fileOptions: const FileOptions(upsert: true),
+        );
+      }
+
+      if (context.mounted) {
+        Navigator.of(context).pop(true);
+      }
+
       return true;
     } catch (e) {
       MyLog("UploadService:uploadImage").log(e.toString());
+      // Ensure the dialog is dismissed on error
       if (context.mounted) {
         Navigator.of(context).pop();
       }
@@ -57,35 +65,55 @@ class UploadService {
   }
 
   Future<File> _resizeImageIfNeeded(File imageFile) async {
-    const maxHeight = 1000;
-    const maxWidth = 1000;
-    final originalImage = img.decodeImage(await imageFile.readAsBytes());
+    final receivePort = ReceivePort();
 
-    if (originalImage == null) return imageFile;
+    // Read image bytes asynchronously **before spawning the isolate**
+    final Uint8List imageBytes = await imageFile.readAsBytes();
 
-    int newWidth = originalImage.width;
-    int newHeight = originalImage.height;
+    // Spawn an isolate and send the raw bytes (not the file path)
+    await Isolate.spawn(_resizeImageInIsolate, [receivePort.sendPort, imageBytes]);
 
-    if (originalImage.height > maxHeight) {
-      newHeight = maxHeight;
-      newWidth = (originalImage.width * maxHeight / originalImage.height).round();
-    }
+    // Receive the resized image bytes asynchronously
+    final Uint8List resizedImageBytes = await receivePort.first as Uint8List;
 
-    if (originalImage.width > maxWidth) {
-      newWidth = maxWidth;
-      newHeight = (originalImage.height * maxWidth / originalImage.width).round();
-    }
-
-    final resizedImage = img.copyResize(
-      originalImage,
-      width: newWidth,
-      height: newHeight,
-    );
-    
-    final resizedImageFile = File(imageFile.path);
-    resizedImageFile.writeAsBytesSync(img.encodeJpg(resizedImage));
-
-    return resizedImageFile;
+    // Write resized bytes back to the file **asynchronously**
+    return imageFile.writeAsBytes(resizedImageBytes);
   }
 
+  void _resizeImageInIsolate(List<dynamic> args) {
+    SendPort sendPort = args[0];
+    Uint8List imageBytes = args[1]; // Expecting raw bytes, not a file path
+
+    const int maxHeight = 1000;
+    const int maxWidth = 1000;
+
+    try {
+      final img.Image? originalImage = img.decodeImage(imageBytes);
+      if (originalImage == null) {
+        sendPort.send(imageBytes); // If decoding fails, return original bytes
+        return;
+      }
+
+      int newWidth = originalImage.width;
+      int newHeight = originalImage.height;
+
+      if (originalImage.height > maxHeight) {
+        newHeight = maxHeight;
+        newWidth = (originalImage.width * maxHeight / originalImage.height).round();
+      }
+
+      if (originalImage.width > maxWidth) {
+        newWidth = maxWidth;
+        newHeight = (originalImage.height * maxWidth / originalImage.width).round();
+      }
+
+      final resizedImage = img.copyResize(originalImage, width: newWidth, height: newHeight);
+      final Uint8List resizedImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage));
+
+      sendPort.send(resizedImageBytes); // Send back processed image bytes
+    } catch (e) {
+      print("Error resizing image in isolate: $e");
+      sendPort.send(imageBytes); // Send original bytes if error occurs
+    }
+  }
 }

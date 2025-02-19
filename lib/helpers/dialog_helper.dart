@@ -73,18 +73,32 @@ class DialogHelper {
     );
   }
 
-  static Future<void> showLoadingDialog(BuildContext context, String message) async {
+  static Future<void> showLoadingDialog(BuildContext context, String message, [bool displayCircularProgressIndicator = true]) async {
     showDialog(
       context: Navigator.of(context, rootNavigator: true).context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
+          contentPadding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(message),
+              if (displayCircularProgressIndicator) ...[
+                const Align(
+                  alignment: Alignment.center,
+                  child: CircularProgressIndicator(),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Align(
+                alignment: Alignment.center,
+                child: Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
             ],
           ),
         );
